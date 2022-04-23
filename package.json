@@ -1,0 +1,26 @@
+{
+  "name": "decurse",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/raegen/decurse.git"
+  },
+  "author": "raegen",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/raegen/decurse/issues"
+  },
+  "homepage": "https://github.com/raegen/decurse#readme",
+  "devDependencies": {
+    "electron": "^18.1.0"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1"
+  }
+}

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <meta http-equiv="X-Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    <title>Hello World!</title>
+    <link rel="stylesheet" href="./main.css">
+  </head>
+  <body>
+    <header>
+        <nav route="installed">Installed</nav>
+        <nav route="add">Add</nav>
+    </header>
+    <navigation route="add">
+        <route id="installed">
+            
+        </route>
+        <route id="add">
+            <webview id="curse" autosize="on" src="https://www.curseforge.com/wow/addons"></webview>
+        </route>
+    </navigation>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
