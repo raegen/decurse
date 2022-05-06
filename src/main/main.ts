@@ -9,11 +9,18 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
+
+import extract from 'extract-zip';
 import { app, BrowserWindow, shell, ipcMain } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
-import { resolveHtmlPath } from './util';
+import { ADDONS_PATH, resolveHtmlPath } from './util';
+
+const unzip = async (source: string) =>
+  extract(source, { dir: ADDONS_PATH }).then(() => {
+    console.log('complete unzip');
+  });
 
 export default class AppUpdater {
   constructor() {
@@ -75,6 +82,7 @@ const createWindow = async () => {
     height: 728,
     icon: getAssetPath('icon.png'),
     webPreferences: {
+      webviewTag: true,
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
         : path.join(__dirname, '../../.erb/dll/preload.js'),
@@ -92,6 +100,32 @@ const createWindow = async () => {
     } else {
       mainWindow.show();
     }
+  });
+
+  mainWindow.webContents.session.on('will-download', (_, item) => {
+    // Set the save path, making Electron not to prompt a save dialog.
+    const zip = path.join(ADDONS_PATH, item.getFilename());
+    item.setSavePath(zip);
+
+    item.on('updated', (_event, state) => {
+      if (state === 'interrupted') {
+        console.log('Download is interrupted but can be resumed');
+      } else if (state === 'progressing') {
+        if (item.isPaused()) {
+          console.log('Download is paused');
+        } else {
+          console.log(`Received bytes: ${item.getReceivedBytes()}`);
+        }
+      }
+    });
+    item.once('done', (_event, state) => {
+      if (state === 'completed') {
+        console.log('Download successfully');
+        unzip(zip);
+      } else {
+        console.log(`Download failed: ${state}`);
+      }
+    });
   });
 
   mainWindow.on('closed', () => {

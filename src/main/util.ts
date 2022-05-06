@@ -16,3 +16,14 @@ if (process.env.NODE_ENV === 'development') {
     return `file://${path.resolve(__dirname, '../renderer/', htmlFileName)}`;
   };
 }
+
+export const INTERFACE_PATH = '/Users/raegen/dev/decurse/interface';
+export const ADDONS_PATH = `${INTERFACE_PATH}/addons`;
+
+export interface Addon {
+  name: string;
+  version: string;
+  submodule: boolean;
+  parent?: string;
+  submodules?: Addon[];
+}

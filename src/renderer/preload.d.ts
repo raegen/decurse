@@ -1,3 +1,5 @@
+import { Addon } from 'main/util';
+
 declare global {
   interface Window {
     electron: {
@@ -8,6 +10,7 @@ declare global {
           func: (...args: unknown[]) => void
         ): (() => void) | undefined;
         once(channel: string, func: (...args: unknown[]) => void): void;
+        getInstalledAddons(): Promise<Addon[]>;
       };
     };
   }
