@@ -36,11 +36,17 @@ contextBridge.exposeInMainWorld('electron', {
     getInstalledAddons() {
       return readdirAsync(ADDONS_PATH).then((r) => {
         const modules = r
-        .filter((f) => f.isDirectory())
-        .map(({ name }) => name)
-        .map((name, _, arr) => {
+          .filter((f) => f.isDirectory())
+          .map(({ name }) => name)
+          .map((name, _, arr) => {
             const dir = fs.readdirSync(path.join(ADDONS_PATH, name));
-            const toc = (dir.includes(`${name}.toc`) ? `${name}.toc` : dir.find((file) => new RegExp(`^(${name})?.*[.]toc`).test(file))) as string;
+            const toc = (
+              dir.includes(`${name}.toc`)
+                ? `${name}.toc`
+                : dir.find((file) =>
+                    new RegExp(`^(${name})?.*[.]toc`).test(file)
+                  )
+            ) as string;
             if (toc) {
               const infoPath = path.join(ADDONS_PATH, name, toc);
               const version = fs
@@ -50,8 +56,9 @@ contextBridge.exposeInMainWorld('electron', {
                 .readFileSync(infoPath, 'utf8')
                 ?.match(/## (?:RequiredDeps|Dependencies):\s*(.+)[\r\n]/i)?.[1]
                 ?.split(/,\s?/);
-                
-              const submodule = !!parseInt(
+
+              const submodule =
+                !!parseInt(
                   fs
                     .readFileSync(infoPath, 'utf8')
                     ?.match(/## LoadOnDemand:\s*(\d)\s/i)?.[1] as string,
@@ -60,7 +67,9 @@ contextBridge.exposeInMainWorld('electron', {
 
               // console.log(name, dependencies);
 
-              const parent = submodule && dependencies?.find((v) => arr.includes(v)) || null;
+              const parent =
+                (submodule && dependencies?.find((v) => arr.includes(v))) ||
+                null;
 
               return {
                 name,
@@ -74,27 +83,20 @@ contextBridge.exposeInMainWorld('electron', {
           .filter(Boolean) as Addon[];
 
         return Object.values(
-          modules.reduce(
-            (acc, curr) =>
-              {
-                return curr.parent
-                ? {
-                    ...acc,
-                    [curr.parent]: {
-                      ...acc[curr.parent],
-                      submodules: [
-                        ...(acc[curr.parent]?.submodules || []),
-                        curr,
-                      ],
-                    },
-                  }
-                : {
-                    ...acc,
-                    [curr.name]: curr,
-                  }
-              },
-            {} as Record<string, Addon>
-          )
+          modules.reduce((acc, curr) => {
+            return curr.parent
+              ? {
+                  ...acc,
+                  [curr.parent]: {
+                    ...acc[curr.parent],
+                    submodules: [...(acc[curr.parent]?.submodules || []), curr],
+                  },
+                }
+              : {
+                  ...acc,
+                  [curr.name]: curr,
+                };
+          }, {} as Record<string, Addon>)
         );
       });
     },
