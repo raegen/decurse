@@ -17,8 +17,8 @@ if (process.env.NODE_ENV === 'development') {
   };
 }
 
-export const INTERFACE_PATH = '/Users/raegen/dev/decurse/interface';
-export const ADDONS_PATH = `${INTERFACE_PATH}/addons`;
+export const INTERFACE_PATH = '/Program Files (x86)/World of Warcraft/_retail_/Interface';
+export const ADDONS_PATH = `${INTERFACE_PATH}/AddOns`;
 
 export interface Addon {
   name: string;
