@@ -20,6 +20,16 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { Addon } from 'main/util';
 import React, { FC, useEffect, useState } from 'react';
 import {
+  BehaviorSubject,
+  Observable,
+  combineLatest,
+  map,
+  debounceTime,
+  distinctUntilChanged,
+  filter,
+  firstValueFrom,
+} from 'rxjs';
+import {
   useQuery,
   QueryClientProvider,
   QueryClient,
@@ -27,43 +37,116 @@ import {
 } from 'react-query';
 import './App.css';
 
+const MAX_SCRAPE_WORKERS = 5;
 const queryClient = new QueryClient();
 
+export class Queue<T> {
+  private workers = new Map();
+
+  private available$: Observable<T[]>;
+
+  constructor(workers: [T, BehaviorSubject<boolean>][]) {
+    this.workers = new Map(workers);
+    this.available$ = combineLatest(
+      [...this.workers.entries()].map(([w, s]) =>
+        s.pipe(
+          map((v: boolean) => (v ? w : null)),
+          distinctUntilChanged(),
+          debounceTime(250)
+        )
+      ) as Observable<T>[]
+    ).pipe(
+      map((ws) => {
+        return ws.filter(Boolean);
+      }),
+      filter((ws) => !!ws.length),
+      distinctUntilChanged((prev, current) => prev.length === current.length)
+    );
+  }
+
+  private subscriptions = new Map();
+
+  add<R>(fn: (worker: T) => Promise<R>) {
+    if (!this.subscriptions.get(fn)) {
+      this.subscriptions.set(
+        fn,
+        firstValueFrom(this.available$).then(([worker]) => {
+          this.workers.get(worker).next(false);
+          return fn(worker).finally(() => this.workers.get(worker).next(true));
+        })
+      );
+    }
+    return this.subscriptions.get(fn);
+  }
+}
+
+interface WebviewTag extends Electron.WebviewTag {
+  ready: Promise<Event>;
+}
+
 const scrapeRoots = document.getElementById('scrape-roots');
+for (let i = 0; i < MAX_SCRAPE_WORKERS; i += 1) {
+  const element = document.createElement('webview') as WebviewTag;
+  element.disablewebsecurity = true;
+  element.style.flex = '0 0 0';
+  element.style.width = '0';
+  element.style.height = '0';
+  element.ready = new Promise<Event>((resolve) =>
+    element.addEventListener('dom-ready', resolve)
+  ).then(
+    () =>
+      new Promise<Event>((resolve) =>
+        element.addEventListener('did-finish-load', resolve)
+      )
+  );
+  element.src = 'https://www.curseforge.com';
+
+  scrapeRoots?.appendChild(element);
+}
+
+const queue = new Queue<WebviewTag>(
+  (Array.from(scrapeRoots?.children as HTMLCollection) as WebviewTag[]).map(
+    (el: WebviewTag) => {
+      const status = new BehaviorSubject(false);
+      el.ready.then(() => status.next(true)).catch(console.log);
+      return [el, status];
+    }
+  )
+);
 
 const useAddonData = ({ addon }: { addon: string }) => {
-  const elementRef = React.useRef<Electron.WebviewTag>();
-  const onReadyRef = React.useRef<Promise<void | Event>>();
+  // const elementRef = React.useRef<Electron.WebviewTag>();
+  // const onReadyRef = React.useRef<Promise<void | Event>>();
 
-  useEffect(() => {
-    elementRef.current = document.createElement('webview');
-    const element = elementRef.current;
-    if (element) {
-      element.disablewebsecurity = true;
-      element.style.flex = '0 0 0';
-      element.style.width = '0';
-      element.style.height = '0';
-      onReadyRef.current = new Promise<Event>((resolve) =>
-        element.addEventListener('dom-ready', resolve)
-      ).then(
-        () =>
-          new Promise<Event>((resolve) =>
-            element.addEventListener('did-finish-load', resolve)
-          )
-      );
-      element.src = `https://www.curseforge.com/wow/addons/search?search=${addon}`;
-      scrapeRoots?.appendChild(element);
-    }
+  // useEffect(() => {
+  //   elementRef.current = document.createElement('webview');
+  //   const element = elementRef.current;
+  //   if (element) {
+  //     element.disablewebsecurity = true;
+  //     element.style.flex = '0 0 0';
+  //     element.style.width = '0';
+  //     element.style.height = '0';
+  //     onReadyRef.current = new Promise<Event>((resolve) =>
+  //       element.addEventListener('dom-ready', resolve)
+  //     ).then(
+  //       () =>
+  //         new Promise<Event>((resolve) =>
+  //           element.addEventListener('did-finish-load', resolve)
+  //         )
+  //     );
+  //     element.src = `https://www.curseforge.com/wow/addons/search?search=${addon}`;
+  //     scrapeRoots?.appendChild(element);
+  //   }
 
-    return () => element.remove();
-  }, [addon]);
+  //   return () => element.remove();
+  // }, [addon]);
 
-  return useQuery<ScrapedData | void>(
-    ['addon', addon],
-    async () => {
-      const element = elementRef.current as Electron.WebviewTag;
-      return onReadyRef.current
-        ?.then(() =>
+  const job = React.useCallback(
+    (element: WebviewTag) => {
+      console.log('adding');
+      return element
+        .loadURL(`https://www.curseforge.com/wow/addons/search?search=${addon}`)
+        .then(() =>
           element.executeJavaScript(
             `location.href=document.querySelector('.project-listing-row a').href`
           )
@@ -86,8 +169,18 @@ const useAddonData = ({ addon }: { addon: string }) => {
             download: () => element.downloadURL(url),
             loading: false,
           };
-        })
-        .catch(console.log);
+        });
+    },
+    [addon]
+  );
+
+  return useQuery<ScrapedData | void>(
+    ['addon', addon],
+    async () => {
+      console.log('using query');
+      return queue
+        .add<ScrapedData>(job)
+        .catch(console.log) as Promise<ScrapedData>;
     },
     {
       staleTime: Infinity,
