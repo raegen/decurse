@@ -72,6 +72,7 @@ export class Queue<T> {
         fn,
         firstValueFrom(this.available$).then(([worker]) => {
           this.workers.get(worker).next(false);
+          this.subscriptions.delete(fn);
           return fn(worker).finally(() => this.workers.get(worker).next(true));
         })
       );
@@ -213,7 +214,11 @@ const AddonData: FC<{
 }) => {
   const { data, isLoading } = useAddonData({ addon });
 
-  return <>{children && data ? children(data) : data}</>;
+  return (
+    <span style={{ filter: isLoading ? 'blur(5px)' : undefined }}>
+      {children && data ? children(data) : (data || '9.99.9')}
+    </span>
+  );
 };
 
 interface WebView extends HTMLWebViewElement {
@@ -252,13 +257,7 @@ const Item: FC<Partial<Addon>> = ({ name, version, submodules = [] }) => {
                       <span>{version}</span>
                       <span style={{ width: 5 }} />
                       <span style={{ display: 'flex', alignItems: 'center' }}>
-                        (
-                        {loading ? (
-                          <span>{version} </span>
-                        ) : lts ? (
-                          `${lts}`
-                        ) : null}
-                        {' latest'})
+                        ({loading ? version : lts} latest)
                       </span>
                     </span>
                   }
