@@ -141,6 +141,9 @@ const useAddonData = ({ addon }: { addon: string }) => {
 
   //   return () => element.remove();
   // }, [addon]);
+  const download = React.useCallback((url) => queue
+  .add((element: WebviewTag) => element.loadURL(url))
+  .catch(console.log) as Promise<ScrapedData>, [])
 
   const job = React.useCallback(
     (element: WebviewTag) => {
@@ -157,7 +160,7 @@ const useAddonData = ({ addon }: { addon: string }) => {
         })
         .then(() =>
           element.executeJavaScript(
-            `\`{"version": "\$\{Array.from(document.querySelectorAll('.listing tr')).find((el) => {var td=el.querySelector('td:nth-child(2) a[data-action="file-link"]');return td && td?.innerText.match(/retail|^(?!bcc|classic|tbc).+$/i)}).querySelector('td:nth-child(2)')?.innerText\}", "url": "\$\{Array.from(document.querySelectorAll('.listing tr')).find((el) => {var td=el.querySelector('td:nth-child(2) a[data-action="file-link"]');return td && td?.innerText.match(/retail|^(?!bcc|classic|tbc).+$/i)}).querySelector('td:last-child [data-tooltip="Download file"]')?.href\}"}\``
+            `\`{"version": "\$\{Array.from(document.querySelectorAll('.listing tr')).find((el) => {var td=el.querySelector('td:nth-child(2)');return td && !td.innerText.match(/bcc|classic|tbc/i)}).querySelector('td:nth-child(2)')?.innerText\}", "url": "\$\{Array.from(document.querySelectorAll('.listing tr')).find((el) => {var td=el.querySelector('td:nth-child(2)');return td && !td.innerText.match(/bcc|classic|tbc/i)}).querySelector('td:last-child [data-tooltip="Download file"]')?.href\}"}\``
           )
         )
         .then((data?: string) => {
@@ -167,7 +170,7 @@ const useAddonData = ({ addon }: { addon: string }) => {
           return {
             version,
             url,
-            download: () => element.downloadURL(url),
+            download: () => download(url),
             loading: false,
           };
         });
@@ -214,11 +217,7 @@ const AddonData: FC<{
 }) => {
   const { data, isLoading } = useAddonData({ addon });
 
-  return (
-    <span style={{ filter: isLoading ? 'blur(5px)' : undefined }}>
-      {children && data ? children(data) : (data || '9.99.9')}
-    </span>
-  );
+  return children ? children({...(data || {version: '9.99.9', url: null}), loading: isLoading}) : (data || null)
 };
 
 interface WebView extends HTMLWebViewElement {
@@ -257,7 +256,7 @@ const Item: FC<Partial<Addon>> = ({ name, version, submodules = [] }) => {
                       <span>{version}</span>
                       <span style={{ width: 5 }} />
                       <span style={{ display: 'flex', alignItems: 'center' }}>
-                        ({loading ? version : lts} latest)
+                        ({loading ? (<span style={{filter: 'blur(5px)'}}>{lts}</span>) : lts} latest)
                       </span>
                     </span>
                   }
