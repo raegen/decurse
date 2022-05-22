@@ -115,6 +115,20 @@ const queue = new Queue<WebviewTag>(
   )
 );
 
+const isUnsupported = ({ error }: ScrappedData) => error === 'unsupported';
+
+const getAddonDataInjectable = function () {
+  const tr = Array.from(document.querySelectorAll('.listing tr')).find((el) => {
+    const td = el.querySelector('td:nth-child(2)');
+    return td && !td?.innerText.match(/bcc|classic|tbc/i);
+  });
+  return `{"version": "${
+    tr?.querySelector('td:nth-child(2)')?.innerText
+  }", "url": "${
+    tr?.querySelector('td:last-child [data-tooltip="Download file"]')?.href
+  }"}`;
+};
+
 const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
   // const elementRef = React.useRef<Electron.WebviewTag>();
   // const onReadyRef = React.useRef<Promise<void | Event>>();
@@ -145,23 +159,9 @@ const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
     (url) =>
       queue
         .add((element: WebviewTag) => element.loadURL(url))
-        .catch(console.log) as Promise<ScrapedData>,
+        .catch(console.log) as Promise<ScrappedData>,
     []
   );
-
-  const getAddonDataInjectable = function () {
-    const tr = Array.from(document.querySelectorAll('.listing tr')).find(
-      (el) => {
-        const td = el.querySelector('td:nth-child(2)');
-        return td && !td?.innerText.match(/bcc|classic|tbc/i);
-      }
-    );
-    return `{"version": "${
-      tr?.querySelector('td:nth-child(2)')?.innerText
-    }", "url": "${
-      tr?.querySelector('td:last-child [data-tooltip="Download file"]')?.href
-    }"}`;
-  };
 
   const job = React.useCallback(
     (element: WebviewTag) => {
@@ -174,9 +174,12 @@ const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
         )
         .then(() =>
           element.executeJavaScript(
-            `location.href=document.querySelector('.project-listing-row a').href`
+            `document.querySelector('.project-listing-row a').href`
           )
         )
+        .catch(() => {
+          throw new Error('unsupported');
+        })
         .then((url: string) => {
           return element.loadURL(`${url}/files`);
         })
@@ -193,18 +196,26 @@ const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
             download: () => download(url),
             loading: false,
           };
+        })
+        .catch((e: Error) => {
+          return {
+            version: null,
+            url: null,
+            loading: false,
+            error: e.message,
+          };
         });
     },
-    [addon]
+    [addon, download, title]
   );
 
-  return useQuery<ScrapedData | void>(
+  return useQuery<ScrappedData | void>(
     ['addon', addon],
     async () => {
-      console.log('using query');
+      // console.log('using query');
       return queue
-        .add<ScrapedData>(job)
-        .catch(console.log) as Promise<ScrapedData>;
+        .add<ScrappedData>(job)
+        .catch(console.log) as Promise<ScrappedData>;
     },
     {
       staleTime: Infinity,
@@ -218,17 +229,18 @@ export const Loading: FC = () => {
   return isFetching ? <LinearProgress /> : null;
 };
 
-interface ScrapedData {
+interface ScrappedData {
   version: string | null;
   url: string | null;
   download?: () => void;
   loading: boolean;
+  error?: string | null;
 }
 
 const AddonData: FC<{
   addon: string;
   title: string;
-  children?: (data: ScrapedData) => React.ReactNode;
+  children?: (data: ScrappedData) => React.ReactNode;
 }> = ({
   addon,
   title,
@@ -236,17 +248,19 @@ const AddonData: FC<{
 }: {
   addon: string;
   title: string;
-  children?: (data: ScrapedData) => React.ReactNode;
+  children?: (data: ScrappedData) => React.ReactNode;
 }) => {
-  console.log('addonData', addon, title);
+  // console.log('addonData', addon, title);
   const { data, isLoading } = useAddonData({ addon, title });
 
-  return children
-    ? children({
-        ...(data || { version: null, url: null }),
-        loading: isLoading,
-      })
-    : data || null;
+  return (
+    (children
+      ? children({
+          ...(data || { version: null, url: null }),
+          loading: isLoading,
+        })
+      : data) || null
+  );
 };
 
 interface WebView extends HTMLWebViewElement {
@@ -267,7 +281,7 @@ const Item: FC<Partial<Addon>> = ({
     <>
       <ListItem disablePadding>
         <AddonData addon={name as string} title={title}>
-          {({ version: lts, url, loading, download }) => (
+          {({ version: lts, error, loading, download }) => (
             <>
               <ListItemButton color="primary" disableGutters>
                 <ListItemButton
@@ -289,15 +303,19 @@ const Item: FC<Partial<Addon>> = ({
                     <span style={{ display: 'flex' }}>
                       <span>{version || 'n/a'}</span>
                       <span style={{ width: 5 }} />
-                      <span style={{ display: 'flex', alignItems: 'center' }}>
-                        (
-                        {loading || !lts ? (
-                          <span style={{ filter: 'blur(5px)' }}>9.99.9</span>
-                        ) : (
-                          lts
-                        )}{' '}
-                        latest)
-                      </span>
+                      {error === 'unsupported' ? (
+                        <span>Unsupported</span>
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center' }}>
+                          (
+                          {loading || !lts ? (
+                            <span style={{ filter: 'blur(5px)' }}>9.99.9</span>
+                          ) : (
+                            lts
+                          )}{' '}
+                          latest)
+                        </span>
+                      )}
                     </span>
                   }
                 />

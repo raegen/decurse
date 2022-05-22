@@ -69,10 +69,10 @@ contextBridge.exposeInMainWorld('electron', {
                   10
                 ) || new RegExp(`(${dependencies?.join('|')})`, 'i').test(name);
 
-              const title =
-                fs
-                  .readFileSync(infoPath, 'utf8')
-                  ?.match(/## Title:\s*\b((.|[ ])+)\b/i)?.[1] || name;
+              const title = fs
+                .readFileSync(infoPath, 'utf8')
+                ?.match(/## Title:\s*(.+)[\r\n]/i)?.[1]
+                ?.replace(/([|](cff(?:\w|\d){6}|r))/gi, '');
 
               // console.log(name, dependencies);
 
