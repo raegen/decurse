@@ -18,11 +18,15 @@ if (process.env.NODE_ENV === 'development') {
   };
 }
 
-export const INTERFACE_PATH = ['/Program Files (x86)/World of Warcraft/_retail_/Interface', '/Applications/World of Warcraft/_retail_/Interface'].find(fs.existsSync);
+export const INTERFACE_PATH = [
+  '/Program Files (x86)/World of Warcraft/_retail_/Interface',
+  '/Applications/World of Warcraft/_retail_/Interface',
+].find(fs.existsSync);
 export const ADDONS_PATH = `${INTERFACE_PATH}/AddOns`;
 
 export interface Addon {
   name: string;
+  title: string;
   version: string;
   submodule: boolean;
   parent?: string;

@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electron', {
           .map(({ name }) => name)
           .map((name, _, arr) => {
             const dir = fs.readdirSync(path.join(ADDONS_PATH, name));
+
             const toc = (
               dir.includes(`${name}.toc`)
                 ? `${name}.toc`
@@ -54,7 +55,10 @@ contextBridge.exposeInMainWorld('electron', {
                 ?.match(/## Version:\s*\b(.+)\b/i)?.[1];
               const dependencies = fs
                 .readFileSync(infoPath, 'utf8')
-                ?.match(/## (?:RequiredDeps|Dependencies):\s*(.+)[\r\n]/i)?.[1]
+                ?.match(
+                  /## (?:RequiredDeps|Dependencies|OptionalDeps):\s*(.+)[\r\n]/i
+                )?.[1]
+                ?.toLowerCase()
                 ?.split(/,\s?/);
 
               const submodule =
@@ -65,16 +69,23 @@ contextBridge.exposeInMainWorld('electron', {
                   10
                 ) || new RegExp(`(${dependencies?.join('|')})`, 'i').test(name);
 
+              const title =
+                fs
+                  .readFileSync(infoPath, 'utf8')
+                  ?.match(/## Title:\s*\b((.|[ ])+)\b/i)?.[1] || name;
+
               // console.log(name, dependencies);
 
               const parent =
-                (submodule && dependencies?.find((v) => arr.includes(v))) ||
+                (submodule &&
+                  arr.find((v) => dependencies?.includes(v.toLowerCase()))) ||
                 null;
 
               return {
                 name,
                 version,
                 parent,
+                title,
               };
             }
 

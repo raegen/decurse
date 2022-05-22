@@ -115,7 +115,7 @@ const queue = new Queue<WebviewTag>(
   )
 );
 
-const useAddonData = ({ addon }: { addon: string }) => {
+const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
   // const elementRef = React.useRef<Electron.WebviewTag>();
   // const onReadyRef = React.useRef<Promise<void | Event>>();
 
@@ -141,15 +141,37 @@ const useAddonData = ({ addon }: { addon: string }) => {
 
   //   return () => element.remove();
   // }, [addon]);
-  const download = React.useCallback((url) => queue
-  .add((element: WebviewTag) => element.loadURL(url))
-  .catch(console.log) as Promise<ScrapedData>, [])
+  const download = React.useCallback(
+    (url) =>
+      queue
+        .add((element: WebviewTag) => element.loadURL(url))
+        .catch(console.log) as Promise<ScrapedData>,
+    []
+  );
+
+  const getAddonDataInjectable = function () {
+    const tr = Array.from(document.querySelectorAll('.listing tr')).find(
+      (el) => {
+        const td = el.querySelector('td:nth-child(2)');
+        return td && !td?.innerText.match(/bcc|classic|tbc/i);
+      }
+    );
+    return `{"version": "${
+      tr?.querySelector('td:nth-child(2)')?.innerText
+    }", "url": "${
+      tr?.querySelector('td:last-child [data-tooltip="Download file"]')?.href
+    }"}`;
+  };
 
   const job = React.useCallback(
     (element: WebviewTag) => {
-      console.log('adding');
+      console.log('adding', title, addon);
       return element
-        .loadURL(`https://www.curseforge.com/wow/addons/search?search=${addon}`)
+        .loadURL(
+          `https://www.curseforge.com/wow/addons/search?search=${
+            title || addon
+          }`
+        )
         .then(() =>
           element.executeJavaScript(
             `location.href=document.querySelector('.project-listing-row a').href`
@@ -159,9 +181,7 @@ const useAddonData = ({ addon }: { addon: string }) => {
           return element.loadURL(`${url}/files`);
         })
         .then(() =>
-          element.executeJavaScript(
-            `\`{"version": "\$\{Array.from(document.querySelectorAll('.listing tr')).find((el) => {var td=el.querySelector('td:nth-child(2)');return td && !td.innerText.match(/bcc|classic|tbc/i)}).querySelector('td:nth-child(2)')?.innerText\}", "url": "\$\{Array.from(document.querySelectorAll('.listing tr')).find((el) => {var td=el.querySelector('td:nth-child(2)');return td && !td.innerText.match(/bcc|classic|tbc/i)}).querySelector('td:last-child [data-tooltip="Download file"]')?.href\}"}\``
-          )
+          element.executeJavaScript(`(${getAddonDataInjectable.toString()}())`)
         )
         .then((data?: string) => {
           const { version, url } = data
@@ -207,17 +227,26 @@ interface ScrapedData {
 
 const AddonData: FC<{
   addon: string;
+  title: string;
   children?: (data: ScrapedData) => React.ReactNode;
 }> = ({
   addon,
+  title,
   children,
 }: {
   addon: string;
+  title: string;
   children?: (data: ScrapedData) => React.ReactNode;
 }) => {
-  const { data, isLoading } = useAddonData({ addon });
+  console.log('addonData', addon, title);
+  const { data, isLoading } = useAddonData({ addon, title });
 
-  return children ? children({...(data || {version: '9.99.9', url: null}), loading: isLoading}) : (data || null)
+  return children
+    ? children({
+        ...(data || { version: null, url: null }),
+        loading: isLoading,
+      })
+    : data || null;
 };
 
 interface WebView extends HTMLWebViewElement {
@@ -226,13 +255,18 @@ interface WebView extends HTMLWebViewElement {
   downloadURL: (url: string) => Promise<void>;
 }
 
-const Item: FC<Partial<Addon>> = ({ name, version, submodules = [] }) => {
+const Item: FC<Partial<Addon>> = ({
+  name,
+  version,
+  title,
+  submodules = [],
+}) => {
   const [state, setState] = useState(false);
 
   return (
     <>
       <ListItem disablePadding>
-        <AddonData addon={name as string}>
+        <AddonData addon={name as string} title={title}>
           {({ version: lts, url, loading, download }) => (
             <>
               <ListItemButton color="primary" disableGutters>
@@ -253,16 +287,22 @@ const Item: FC<Partial<Addon>> = ({ name, version, submodules = [] }) => {
                   primary={name}
                   secondary={
                     <span style={{ display: 'flex' }}>
-                      <span>{version}</span>
+                      <span>{version || 'n/a'}</span>
                       <span style={{ width: 5 }} />
                       <span style={{ display: 'flex', alignItems: 'center' }}>
-                        ({loading ? (<span style={{filter: 'blur(5px)'}}>{lts}</span>) : lts} latest)
+                        (
+                        {loading || !lts ? (
+                          <span style={{ filter: 'blur(5px)' }}>9.99.9</span>
+                        ) : (
+                          lts
+                        )}{' '}
+                        latest)
                       </span>
                     </span>
                   }
                 />
               </ListItemButton>
-              {url ? (
+              {lts && !lts.includes(version) ? (
                 <ListItemButton
                   style={{ flex: '0 0 auto' }}
                   onClick={() => download?.()}
@@ -304,9 +344,9 @@ export const Installed = () => {
         sx={{ width: '100%', bgcolor: 'background.paper', overflowY: 'auto' }}
       >
         <List>
-          {items.map(({ name, version, submodules }) => (
-            <React.Fragment key={name}>
-              <Item name={name} version={version} submodules={submodules} />
+          {items.map((item) => (
+            <React.Fragment key={item.name}>
+              <Item {...item} />
             </React.Fragment>
           ))}
         </List>
