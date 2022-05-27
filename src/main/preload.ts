@@ -74,6 +74,11 @@ contextBridge.exposeInMainWorld('electron', {
                 ?.match(/## Title:\s*(.+)[\r\n]/i)?.[1]
                 ?.replace(/([|](cff(?:\w|\d){6}|r))/gi, '');
 
+              const notes = fs
+                .readFileSync(infoPath, 'utf8')
+                ?.match(/## Notes:\s*(.+)[\r\n]/i)?.[1]
+                ?.replace(/([|](cff(?:\w|\d){6}|r))/gi, '');
+
               // console.log(name, dependencies);
 
               const parent =
@@ -85,7 +90,9 @@ contextBridge.exposeInMainWorld('electron', {
                 name,
                 version,
                 parent,
-                title,
+                title: title?.match(new RegExp(`${notes}`, 'i'))
+                  ? notes
+                  : title,
               };
             }
 

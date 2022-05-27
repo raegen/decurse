@@ -83,6 +83,7 @@ export class Queue<T> {
 
 interface WebviewTag extends Electron.WebviewTag {
   ready: Promise<Event>;
+  defaultUserAgent: string;
 }
 
 const scrapeRoots = document.getElementById('scrape-roots');
@@ -92,6 +93,7 @@ for (let i = 0; i < MAX_SCRAPE_WORKERS; i += 1) {
   element.style.flex = '0 0 0';
   element.style.width = '0';
   element.style.height = '0';
+
   element.ready = new Promise<Event>((resolve) =>
     element.addEventListener('dom-ready', resolve)
   ).then(
@@ -100,6 +102,14 @@ for (let i = 0; i < MAX_SCRAPE_WORKERS; i += 1) {
         element.addEventListener('did-finish-load', resolve)
       )
   );
+  // element.ready
+  //   .then(() => {
+  //     element.defaultUserAgent = element.getUserAgent();
+  //     element.setUserAgent(
+  //       'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+  //     );
+  //   })
+  //   .catch(console.log);
   element.src = 'https://www.curseforge.com';
 
   scrapeRoots?.appendChild(element);
@@ -118,16 +128,33 @@ const queue = new Queue<WebviewTag>(
 const isUnsupported = ({ error }: ScrappedData) => error === 'unsupported';
 
 const getAddonDataInjectable = function () {
-  const tr = Array.from(document.querySelectorAll('.listing tr')).find((el) => {
-    const td = el.querySelector('td:nth-child(2)');
-    return td && !td?.innerText.match(/bcc|classic|tbc/i);
-  });
+  const tr = Array.from(document.querySelectorAll('.listing tr') || []).find(
+    (el) => {
+      const td = el.querySelector('td:nth-child(2)');
+      return td && !td?.innerText.match(/bcc|classic|tbc/i);
+    }
+  );
   return `{"version": "${
     tr?.querySelector('td:nth-child(2)')?.innerText
   }", "url": "${
     tr?.querySelector('td:last-child [data-tooltip="Download file"]')?.href
   }"}`;
 };
+
+const isCaptcha = function () {
+  return !!document.querySelector('#challenge-form');
+};
+
+const handleCaptcha = function () {
+  const form = document.querySelector('#challenge-form');
+  if (form) {
+    // form.scrollIntoView({ inline: 'center' });
+    return true;
+  }
+  return false;
+};
+
+const captchaResolving$ = new BehaviorSubject(false);
 
 const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
   // const elementRef = React.useRef<Electron.WebviewTag>();
@@ -166,16 +193,59 @@ const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
   const job = React.useCallback(
     (element: WebviewTag) => {
       console.log('adding', title, addon);
+      const searchID = title || addon;
+      const searchURL = `https://www.curseforge.com/wow/addons/search?search=${encodeURIComponent(
+        searchID
+      )}`;
+      console.log(searchURL);
       return element
-        .loadURL(
-          `https://www.curseforge.com/wow/addons/search?search=${
-            title || addon
-          }`
-        )
+        .loadURL(searchURL)
         .then(() =>
-          element.executeJavaScript(
-            `document.querySelector('.project-listing-row a').href`
-          )
+          element
+            .executeJavaScript(
+              `document.querySelector('.project-listing-row a').href`
+            )
+            .catch((e) => {
+              return element
+                .executeJavaScript(`(${isCaptcha.toString()}())`)
+                .then((captcha) => {
+                  if (captcha) {
+                    if (captchaResolving$.getValue()) {
+                      return firstValueFrom(
+                        captchaResolving$.pipe(filter((v) => !v))
+                      ).then(() => element.loadURL(searchURL));
+                    }
+                    captchaResolving$.next(true);
+                    element.classList.add('webview-popup');
+                    const searchRequest = element.findInPage(searchID);
+
+                    return element
+                      .executeJavaScript(`(${handleCaptcha.toString()}())`)
+                      .then(() =>
+                        new Promise<void>((resolve) => {
+                          // element.setUserAgent(element.defaultUserAgent);s
+                          element.addEventListener(
+                            'found-in-page',
+                            ({ result: { requestId, matches } }) => {
+                              if (requestId === searchRequest && matches) {
+                                element.stopFindInPage('clearSelection');
+                                element.classList.remove('webview-popup');
+                                captchaResolving$.next(false);
+                                resolve();
+                              }
+                            }
+                          );
+                        }).then(() =>
+                          element.executeJavaScript(
+                            `document.querySelector('.project-listing-row a').href`
+                          )
+                        )
+                      );
+                  }
+
+                  return e;
+                });
+            })
         )
         .catch(() => {
           throw new Error('unsupported');
@@ -253,14 +323,10 @@ const AddonData: FC<{
   // console.log('addonData', addon, title);
   const { data, isLoading } = useAddonData({ addon, title });
 
-  return (
-    (children
-      ? children({
-          ...(data || { version: null, url: null }),
-          loading: isLoading,
-        })
-      : data) || null
-  );
+  return children?.({
+        ...(data || { version: null, url: null }),
+        loading: isLoading,
+      }) || null
 };
 
 interface WebView extends HTMLWebViewElement {
@@ -280,7 +346,7 @@ const Item: FC<Partial<Addon>> = ({
   return (
     <>
       <ListItem disablePadding>
-        <AddonData addon={name as string} title={title}>
+        <AddonData addon={name as string} title={title as string}>
           {({ version: lts, error, loading, download }) => (
             <>
               <ListItemButton color="primary" disableGutters>
@@ -298,7 +364,7 @@ const Item: FC<Partial<Addon>> = ({
                   </ListItemIcon>
                 </ListItemButton>
                 <ListItemText
-                  primary={name}
+                  primary={title || name}
                   secondary={
                     <span style={{ display: 'flex' }}>
                       <span>{version || 'n/a'}</span>
@@ -320,7 +386,7 @@ const Item: FC<Partial<Addon>> = ({
                   }
                 />
               </ListItemButton>
-              {lts && !lts.includes(version) ? (
+              {lts && !lts.includes(version as string) ? (
                 <ListItemButton
                   style={{ flex: '0 0 auto' }}
                   onClick={() => download?.()}
@@ -336,7 +402,7 @@ const Item: FC<Partial<Addon>> = ({
         <List style={{ paddingLeft: 56 }} component="div" disablePadding>
           {submodules.map((s) => (
             <ListItemButton sx={{ pl: 4 }} key={s.name}>
-              <ListItemText primary={s.name} secondary={s.version} />
+              <ListItemText primary={s.title || s.name} secondary={s.version} />
             </ListItemButton>
           ))}
         </List>
