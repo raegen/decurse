@@ -223,7 +223,7 @@ const useAddonData = ({ addon, title }: { addon: string; title: string }) => {
                       .executeJavaScript(`(${handleCaptcha.toString()}())`)
                       .then(() =>
                         new Promise<void>((resolve) => {
-                          // element.setUserAgent(element.defaultUserAgent);s
+                          // element.setUserAgent(element.defaultUserAgent);
                           element.addEventListener(
                             'found-in-page',
                             ({ result: { requestId, matches } }) => {
@@ -323,10 +323,12 @@ const AddonData: FC<{
   // console.log('addonData', addon, title);
   const { data, isLoading } = useAddonData({ addon, title });
 
-  return children?.({
-        ...(data || { version: null, url: null }),
-        loading: isLoading,
-      }) || null
+  return (
+    children?.({
+      ...(data || { version: null, url: null }),
+      loading: isLoading,
+    }) || null
+  );
 };
 
 interface WebView extends HTMLWebViewElement {
